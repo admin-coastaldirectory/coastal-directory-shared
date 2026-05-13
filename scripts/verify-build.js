@@ -39,6 +39,12 @@ function checkPageSizes() {
     count++;
     const size = fs.statSync(f).size;
     if (size < MIN_PAGE_BYTES) {
+      // Exempt intentional small files:
+      //   - meta-refresh redirect stubs
+      //   - search-engine verification token files (google<hash>.html, BingSiteAuth.html, etc.)
+      const base = path.basename(f);
+      if (base.startsWith('google') && base.length < 40 && base.endsWith('.html')) continue;
+      if (base.toLowerCase().startsWith('bingsiteauth') && base.endsWith('.html')) continue;
       const head = fs.readFileSync(f, 'utf8').slice(0, 500).toLowerCase();
       if (head.includes('http-equiv="refresh"') || head.includes("http-equiv='refresh'")) {
         continue;
@@ -47,7 +53,7 @@ function checkPageSizes() {
       thin++;
     }
   }
-  if (thin === 0) ok(`page sizes: all ${count} pages OK (redirect stubs exempt)`);
+  if (thin === 0) ok(`page sizes: all ${count} pages OK (redirect stubs + verification tokens exempt)`);
 }
 
 function checkOrphanStateFolders() {
