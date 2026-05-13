@@ -1,0 +1,59 @@
+# ============================================================
+# Canonical netlify.toml — Coastal Directory family
+# Copy this into each site's repo root as `netlify.toml`.
+# Customize ENV section per-site if needed.
+# ============================================================
+
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["stripe"]
+
+# Pretty-URL trailing-slash policy: send /shops/california to
+# /shops/california/ so the canonical folder URL is the only one.
+[[redirects]]
+  from = "/shops/:state"
+  to = "/shops/:state/"
+  status = 301
+  force = false
+
+[[redirects]]
+  from = "/events/:state"
+  to = "/events/:state/"
+  status = 301
+  force = false
+
+# Let Netlify Functions handle their own routes.
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# Catch-all 404 (must come last).
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404
+
+# Security headers — applied to every response.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(self)"
+
+# Cache aggressive on static assets.
+[[headers]]
+  for = "/style.css"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, must-revalidate"
+
+[[headers]]
+  for = "/shared.js"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, must-revalidate"

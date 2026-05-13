@@ -1,0 +1,27 @@
+# ============================================================
+# Canonical _redirects — Coastal Directory family
+# Copy this into each site's repo root as `_redirects`.
+# Site-specific redirects (legacy URL → new canonical) can be
+# appended at the end of the per-site file.
+# ============================================================
+
+# Drop legacy .html flat URLs in /shops/ to their folder canonicals.
+# Add lines per state as needed when migrating from file-model URLs:
+#   /shops/california.html  /shops/california/  301
+#   /shops/california/los-angeles.html  /shops/california/los-angeles/  301
+
+# Drop trailing-extension shop pages.
+# Example legacy CSNM URL pattern:
+#   /shops/:state/:city/:shop.html  /shops/:state/:city/:shop/  301
+/shops/:state/:city/:shop.html  /shops/:state/:city/:shop/  301
+/shops/:state/:city.html  /shops/:state/:city/  301
+/shops/:state.html  /shops/:state/  301
+
+# Drop trailing-extension on top-level pages.
+/about.html        /about         301
+/faq.html          /faq           301
+/blog.html         /blog          301
+/advertise.html    /advertise     301
+/submit.html       /submit        301
+/claim.html        /claim         301
+/privacy.html      /privacy       301

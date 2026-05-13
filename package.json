@@ -1,0 +1,14 @@
+{
+  "name": "coastal-directory-shared",
+  "version": "1.0.0",
+  "description": "Canonical generator, page template, and assets shared across all Coastal Directory sites (CoinsNearMe, ComicStoresNearMe, etc.).",
+  "private": true,
+  "main": "lib/generate.js",
+  "scripts": {
+    "verify": "node scripts/verify-build.js",
+    "render-samples": "node samples/render-samples.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

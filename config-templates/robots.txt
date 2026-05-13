@@ -1,0 +1,6 @@
+# Generated automatically by lib/sitemaps.js — this template is
+# kept around as a reference. The real robots.txt is written into
+# the build output dir at build time.
+User-agent: *
+Allow: /
+Sitemap: https://YOUR-SITE.example.com/sitemap.xml
