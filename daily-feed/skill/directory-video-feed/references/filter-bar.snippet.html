@@ -1,0 +1,18 @@
+<!-- Lane filter bar. Paste right before <main class="df-feed" id="df-feed">. -->
+<nav class="df-filters" id="df-lanes">
+  <button class="df-pill" data-lane="all">All <span class="df-pill-count"></span></button>
+  <button class="df-pill" data-lane="news">News <span class="df-pill-count"></span></button>
+  <button class="df-pill" data-lane="social">Social <span class="df-pill-count"></span></button>
+  <button class="df-pill" data-lane="video">Video <span class="df-pill-count"></span></button>
+  <button class="df-pill" data-lane="blog">Blog <span class="df-pill-count"></span></button>
+</nav>
+
+<!--
+CSS (most sites already have .df-filters/.df-pill; set the accent to the site's brand color):
+
+.df-filters { margin: 40px 0 20px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.df-pill { padding: 7px 14px; border: 1px solid #ddd; background: #fff; border-radius: 999px; cursor: pointer; font-size: 13px; color: #666; transition: all .15s; }
+.df-pill:hover { border-color: var(--accent); color: var(--accent); }
+.df-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.df-pill-count { opacity: .55; font-size: 11px; margin-left: 3px; }
+-->

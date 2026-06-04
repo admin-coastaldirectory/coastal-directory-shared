@@ -1,0 +1,318 @@
+{
+  "name": "CF YouTube Video Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7,19 * * *"
+            }
+          ]
+        }
+      },
+      "id": "n-schedule",
+      "name": "Twice Daily (7am/7pm)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== FILL THESE IN (the only node you configure) =====\nconst C = {\n  // Your restricted YouTube Data API v3 key (it's in your Phase 1/2 SQL files).\n  youtube_api_key: \"PASTE_YOUTUBE_API_KEY\",\n\n  anthropic_key: \"PASTE_ANTHROPIC_API_KEY\",\n  haiku_model:   \"claude-haiku-4-5-20251001\",\n\n  // CollectiblesFind (CF) Supabase project vtlgfwldogsdueiahidp\n  supabase_url: \"https://vtlgfwldogsdueiahidp.supabase.co\",\n  supabase_key: \"PASTE_SUPABASE_SERVICE_ROLE_KEY\",\n\n  // How far back each run looks for new uploads (hours).\n  lookback_hours: 36,\n  // YouTube results per search query (does NOT change quota; each search.list = 100 units).\n  max_results_per_query: 10,\n  // Auto-post threshold: quality_score >= this -> approved, else pending.\n  approve_min_score: 5\n};\n\n// ===== CATEGORY / SEARCH MAP - edit freely =====\n// label   = EXACT category text the Daily Feed pages filter on (must match the\n//           site category pills: Coins, Sports Cards, Trading Cards, etc.)\n// queries = search terms; each term = one YouTube search.list call = 100 units.\n// 12 categories x 3 queries = 36 calls/run = 3,600 quota units/run, x2/day = 7,200.\nconst CATEGORIES = [\n  { label: \"Coins\",         queries: [\"rare coins\", \"coin collecting\", \"silver stacking\"] },\n  { label: \"Sports Cards\",  queries: [\"sports card collecting\", \"card breaks\", \"sports cards investing\"] },\n  { label: \"Trading Cards\", queries: [\"pokemon cards opening\", \"magic the gathering cards\", \"tcg collecting\"] },\n  { label: \"Comics\",        queries: [\"comic book collecting\", \"comic book haul\", \"key comics investing\"] },\n  { label: \"Sneakers\",      queries: [\"sneaker collection\", \"sneaker unboxing\", \"rare sneakers\"] },\n  { label: \"Watches\",       queries: [\"watch collecting\", \"luxury watch review\", \"vintage watches\"] },\n  { label: \"Jewelry\",       queries: [\"estate jewelry\", \"vintage jewelry\", \"fine jewelry collecting\"] },\n  { label: \"Stamps\",        queries: [\"stamp collecting\", \"philately\", \"rare stamps\"] },\n  { label: \"Toys\",          queries: [\"vintage toys collecting\", \"action figure collection\", \"toy hunting\"] },\n  { label: \"Vintage\",       queries: [\"vintage collectibles\", \"antique haul\", \"vintage thrift finds\"] },\n  // NOTE: no \"Hollywood\" pill on the site -> mapped to \"Memorabilia\". Change if you prefer.\n  { label: \"Memorabilia\",   queries: [\"movie memorabilia\", \"hollywood memorabilia\", \"film prop collecting\"] },\n  { label: \"Memorabilia\",   queries: [\"sports memorabilia\", \"autograph collecting\", \"game used memorabilia\"] }\n];\n\nreturn [{ json: { config: C, categories: CATEGORIES } }];\n"
+      },
+      "id": "n-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Flatten categories x queries into one item per search call.\n// Build query string manually (n8n Code sandbox has no URLSearchParams).\nconst cfg = $(\"Config\").first().json.config;\nconst cats = $(\"Config\").first().json.categories;\nconst publishedAfter = new Date(Date.now() - (cfg.lookback_hours || 36) * 3600000).toISOString();\nconst enc = encodeURIComponent;\nconst out = [];\nfor (const c of cats) {\n  for (const q of c.queries) {\n    const qs = [\n      \"part=snippet\",\n      \"type=video\",\n      \"order=date\",\n      \"maxResults=\" + enc(String(cfg.max_results_per_query || 10)),\n      \"q=\" + enc(q),\n      \"publishedAfter=\" + enc(publishedAfter),\n      \"relevanceLanguage=en\",\n      \"key=\" + enc(cfg.youtube_api_key)\n    ].join(\"&\");\n    out.push({ json: {\n      category: c.label, query: q,\n      url: \"https://www.googleapis.com/youtube/v3/search?\" + qs\n    }});\n  }\n}\nreturn out;\n"
+      },
+      "id": "n-build",
+      "name": "Build Search Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "id": "n-search",
+      "name": "YouTube Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Flatten every YouTube search response into one item per video.\n// Self-contained MD5 (n8n Code sandbox may not allow require('crypto')).\nfunction md5(str){\n  function rl(n,c){return (n<<c)|(n>>>(32-c));}\n  function au(x,y){var l=(x&0xFFFF)+(y&0xFFFF);var m=(x>>16)+(y>>16)+(l>>16);return (m<<16)|(l&0xFFFF);}\n  function cmn(q,a,b,x,s,t){return au(rl(au(au(a,q),au(x,t)),s),b);}\n  function ff(a,b,c,d,x,s,t){return cmn((b&c)|((~b)&d),a,b,x,s,t);}\n  function gg(a,b,c,d,x,s,t){return cmn((b&d)|(c&(~d)),a,b,x,s,t);}\n  function hh(a,b,c,d,x,s,t){return cmn(b^c^d,a,b,x,s,t);}\n  function ii(a,b,c,d,x,s,t){return cmn(c^(b|(~d)),a,b,x,s,t);}\n  function sb(s){var nb=((s.length+8)>>6)+1,bl=new Array(nb*16);for(var k=0;k<nb*16;k++)bl[k]=0;for(var i=0;i<s.length;i++){bl[i>>2]|=s.charCodeAt(i)<<((i%4)*8);}bl[i>>2]|=0x80<<((i%4)*8);bl[nb*16-2]=s.length*8;return bl;}\n  function hex(n){var o='';for(var j=0;j<4;j++){o+=('0'+((n>>(j*8))&0xFF).toString(16)).slice(-2);}return o;}\n  var x=sb(str),a=1732584193,b=-271733879,c=-1732584194,d=271733878;\n  for(var i=0;i<x.length;i+=16){var oa=a,ob=b,oc=c,od=d;\n    a=ff(a,b,c,d,x[i],7,-680876936);d=ff(d,a,b,c,x[i+1],12,-389564586);c=ff(c,d,a,b,x[i+2],17,606105819);b=ff(b,c,d,a,x[i+3],22,-1044525330);\n    a=ff(a,b,c,d,x[i+4],7,-176418897);d=ff(d,a,b,c,x[i+5],12,1200080426);c=ff(c,d,a,b,x[i+6],17,-1473231341);b=ff(b,c,d,a,x[i+7],22,-45705983);\n    a=ff(a,b,c,d,x[i+8],7,1770035416);d=ff(d,a,b,c,x[i+9],12,-1958414417);c=ff(c,d,a,b,x[i+10],17,-42063);b=ff(b,c,d,a,x[i+11],22,-1990404162);\n    a=ff(a,b,c,d,x[i+12],7,1804603682);d=ff(d,a,b,c,x[i+13],12,-40341101);c=ff(c,d,a,b,x[i+14],17,-1502002290);b=ff(b,c,d,a,x[i+15],22,1236535329);\n    a=gg(a,b,c,d,x[i+1],5,-165796510);d=gg(d,a,b,c,x[i+6],9,-1069501632);c=gg(c,d,a,b,x[i+11],14,643717713);b=gg(b,c,d,a,x[i],20,-373897302);\n    a=gg(a,b,c,d,x[i+5],5,-701558691);d=gg(d,a,b,c,x[i+10],9,38016083);c=gg(c,d,a,b,x[i+15],14,-660478335);b=gg(b,c,d,a,x[i+4],20,-405537848);\n    a=gg(a,b,c,d,x[i+9],5,568446438);d=gg(d,a,b,c,x[i+14],9,-1019803690);c=gg(c,d,a,b,x[i+3],14,-187363961);b=gg(b,c,d,a,x[i+8],20,1163531501);\n    a=gg(a,b,c,d,x[i+13],5,-1444681467);d=gg(d,a,b,c,x[i+2],9,-51403784);c=gg(c,d,a,b,x[i+7],14,1735328473);b=gg(b,c,d,a,x[i+12],20,-1926607734);\n    a=hh(a,b,c,d,x[i+5],4,-378558);d=hh(d,a,b,c,x[i+8],11,-2022574463);c=hh(c,d,a,b,x[i+11],16,1839030562);b=hh(b,c,d,a,x[i+14],23,-35309556);\n    a=hh(a,b,c,d,x[i+1],4,-1530992060);d=hh(d,a,b,c,x[i+4],11,1272893353);c=hh(c,d,a,b,x[i+7],16,-155497632);b=hh(b,c,d,a,x[i+10],23,-1094730640);\n    a=hh(a,b,c,d,x[i+13],4,681279174);d=hh(d,a,b,c,x[i],11,-358537222);c=hh(c,d,a,b,x[i+3],16,-722521979);b=hh(b,c,d,a,x[i+6],23,76029189);\n    a=hh(a,b,c,d,x[i+9],4,-640364487);d=hh(d,a,b,c,x[i+12],11,-421815835);c=hh(c,d,a,b,x[i+15],16,530742520);b=hh(b,c,d,a,x[i+2],23,-995338651);\n    a=ii(a,b,c,d,x[i],6,-198630844);d=ii(d,a,b,c,x[i+7],10,1126891415);c=ii(c,d,a,b,x[i+14],15,-1416354905);b=ii(b,c,d,a,x[i+5],21,-57434055);\n    a=ii(a,b,c,d,x[i+12],6,1700485571);d=ii(d,a,b,c,x[i+3],10,-1894986606);c=ii(c,d,a,b,x[i+10],15,-1051523);b=ii(b,c,d,a,x[i+1],21,-2054922799);\n    a=ii(a,b,c,d,x[i+8],6,1873313359);d=ii(d,a,b,c,x[i+15],10,-30611744);c=ii(c,d,a,b,x[i+6],15,-1560198380);b=ii(b,c,d,a,x[i+13],21,1309151649);\n    a=ii(a,b,c,d,x[i+4],6,-145523070);d=ii(d,a,b,c,x[i+11],10,-1120210379);c=ii(c,d,a,b,x[i+2],15,718787259);b=ii(b,c,d,a,x[i+9],21,-343485551);\n    a=au(a,oa);b=au(b,ob);c=au(c,oc);d=au(d,od);}\n  return hex(a)+hex(b)+hex(c)+hex(d);\n}\nconst ctxs = $(\"Build Search Requests\").all();\nconst results = $input.all();\nconst seen = new Set();\nconst videos = [];\nfor (let i = 0; i < results.length; i++) {\n  const ctx = (ctxs[i] && ctxs[i].json) || {};\n  const body = results[i] && results[i].json;\n  const items = (body && body.items) || [];\n  for (const it of items) {\n    const vid = it && it.id && it.id.videoId;\n    if (!vid || seen.has(vid)) continue;\n    seen.add(vid);\n    const sn = it.snippet || {};\n    const url = \"https://www.youtube.com/watch?v=\" + vid;\n    const thumbs = sn.thumbnails || {};\n    const thumb = (thumbs.high || thumbs.medium || thumbs.default || {}).url || null;\n    videos.push({ json: {\n      category: ctx.category, query: ctx.query, video_id: vid,\n      title: (sn.title || \"\").trim(),\n      description: (sn.description || \"\").slice(0, 1200),\n      channel_title: sn.channelTitle || \"\",\n      published_at: sn.publishedAt || null,\n      image_url: thumb, url: url,\n      url_hash: md5(url)\n    }});\n  }\n}\nreturn videos;\n"
+      },
+      "id": "n-extract",
+      "name": "Extract Videos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Drop videos whose url_hash already exists in cf_content_items (last 90 days).\n// Mirrors the News Agent: on any lookup failure, pass everything through.\nconst cfg = $(\"Config\").first().json.config;\nconst items = $input.all();\nif (items.length === 0) return [];\nconst since = new Date(Date.now() - 90 * 86400000).toISOString();\nlet known = new Set();\ntry {\n  let offset = 0;\n  const pageSize = 1000;\n  while (true) {\n    const res = await this.helpers.httpRequest({\n      method: \"GET\",\n      url: cfg.supabase_url + \"/rest/v1/cf_content_items\"\n         + \"?type=eq.video&created_at=gte.\" + since + \"&select=url_hash\",\n      headers: {\n        apikey: cfg.supabase_key,\n        Authorization: \"Bearer \" + cfg.supabase_key,\n        Range: offset + \"-\" + (offset + pageSize - 1)\n      },\n      json: true\n    });\n    if (!Array.isArray(res) || res.length === 0) break;\n    for (const r of res) { if (r.url_hash) known.add(r.url_hash); }\n    if (res.length < pageSize) break;\n    offset += pageSize;\n  }\n} catch (e) { return items; }\nreturn items.filter(it => !known.has(it.json.url_hash));\n"
+      },
+      "id": "n-dedup",
+      "name": "Dedup vs DB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const cfg = $(\"Config\").first().json.config;\nconst v = $json;\nconst prompt = [\n\"You are the content scorer for a collectibles network's Daily Feed.\",\n\"Score this YouTube video and return ONLY a JSON object (no prose) with keys:\",\n'- summary: one plain sentence, max 30 words. Plain words, no hype, no AI-slop',\n'  words (delve, supercharge, elevate, game-changer, robust, seamless, dive into).',\n'- quality_score: integer 1-10. How worthwhile this video is on a collectibles',\n'  feed for the given category. 10 = genuinely useful/interesting to collectors',\n'  (real finds, market talk, education, news). Low = spam, reseller ads, clickbait,',\n'  off-topic, get-rich hype, or low-effort filler.',\n'- is_relevant: boolean. True if it fits the category and the collectibles hobby.',\n\"\",\n\"VIDEO:\",\n\"category: \" + v.category,\n\"channel: \" + v.channel_title,\n\"title: \" + v.title,\n\"description: \" + v.description\n].join(\"\\n\");\nreturn { json: { ...v, haiku_body: {\n  model: cfg.haiku_model, max_tokens: 400,\n  messages: [{ role: \"user\", content: prompt }]\n}}};\n"
+      },
+      "id": "n-haiku-req",
+      "name": "Build Haiku Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $('Config').first().json.config.anthropic_key }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.haiku_body) }}",
+        "options": {}
+      },
+      "id": "n-haiku",
+      "name": "Haiku Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Parse Haiku output, set status, build the exact cf_content_items payload.\n// Per the News Agent fix: never silently drop low/irrelevant items - save them\n// as 'pending'. Only quality_score >= approve_min_score auto-approves to the feed.\nconst cfg = $(\"Config\").first().json.config;\nconst ctxs = $(\"Build Haiku Request\").all();\nconst results = $input.all();\nconst runId = \"yt-\" + new Date().toISOString().slice(0, 16);\nconst out = [];\nfor (let i = 0; i < results.length; i++) {\n  const v = ctxs[i].json;\n  let parsed = null;\n  try {\n    const txt = results[i].json.content[0].text;\n    parsed = JSON.parse(txt.match(/\\{[\\s\\S]*\\}/)[0]);\n  } catch (e) {\n    parsed = { summary: (v.title || \"\").slice(0, 160), quality_score: 1, is_relevant: false };\n  }\n  const qs = Math.max(1, Math.min(10, Number(parsed.quality_score) || 1));\n  const relevant = parsed.is_relevant !== false;\n  const status = (relevant && qs >= (cfg.approve_min_score || 5)) ? \"approved\" : \"pending\";\n  out.push({ json: {\n    type: \"video\", category: v.category, title: v.title,\n    summary: parsed.summary || \"\", url: v.url, image_url: v.image_url,\n    source_name: v.channel_title, source_platform: \"youtube\", author: v.channel_title,\n    video_duration_seconds: null, is_journalistic: false,\n    published_at: v.published_at, status: status, quality_score: qs,\n    agent_run_id: runId, agent_model: cfg.haiku_model, agent_confidence: qs / 10,\n    url_hash: v.url_hash,\n    raw_payload: { video_id: v.video_id, query: v.query, channel: v.channel_title }\n  }});\n}\nreturn out;\n"
+      },
+      "id": "n-parse",
+      "name": "Parse + Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.config.supabase_url }}/rest/v1/cf_content_items?on_conflict=url_hash",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal,resolution=ignore-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type:$json.type, category:$json.category, title:$json.title, summary:$json.summary, url:$json.url, image_url:$json.image_url, source_name:$json.source_name, source_platform:$json.source_platform, author:$json.author, video_duration_seconds:$json.video_duration_seconds, is_journalistic:$json.is_journalistic, published_at:$json.published_at, status:$json.status, quality_score:$json.quality_score, agent_run_id:$json.agent_run_id, agent_model:$json.agent_model, agent_confidence:$json.agent_confidence, raw_payload:$json.raw_payload }) }}",
+        "options": {}
+      },
+      "id": "n-insert",
+      "name": "Insert Videos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Twice Daily (7am/7pm)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Build Search Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Requests": {
+      "main": [
+        [
+          {
+            "node": "YouTube Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube Search": {
+      "main": [
+        [
+          {
+            "node": "Extract Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Videos": {
+      "main": [
+        [
+          {
+            "node": "Dedup vs DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedup vs DB": {
+      "main": [
+        [
+          {
+            "node": "Build Haiku Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Haiku Request": {
+      "main": [
+        [
+          {
+            "node": "Haiku Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Haiku Score": {
+      "main": [
+        [
+          {
+            "node": "Parse + Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Status": {
+      "main": [
+        [
+          {
+            "node": "Insert Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
