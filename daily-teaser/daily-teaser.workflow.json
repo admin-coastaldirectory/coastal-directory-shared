@@ -1,0 +1,166 @@
+{
+  "name": "Daily Teaser - Comics",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 7,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d-0001",
+      "name": "Daily 7 AM"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Node: \"Get Daily Items\" (n8n Code node) ===\n// Daily teaser pull: top approved news+blog items from the last 24 hours (+ up to 2 videos)\n// for one site's category. Set SITE below - 'comics' | 'coins' | 'collectibles'.\nconst SITE = 'comics';\n\nconst CONFIG = {\n  comics: {\n    brand: 'ComicStoresNearMe',\n    domain: 'comicstoresnearme.com',\n    accent: '#c03030',\n    rule: '#c03030',\n    gtag: 'G-3LKP95PGDN',\n    categoryFilter: '&category=eq.Comics',\n    categoryHeaders: false\n  },\n  coins: {\n    brand: 'CoinsNearMe',\n    domain: 'coinsnearme.co',\n    accent: '#1a3a5c',        // NAVY accent. Gold is the brand-rule ONLY, never the accent.\n    rule: '#c9a227',          // gold brand-rule under the logo\n    gtag: 'G-6NBHQKVXET',\n    categoryFilter: '&category=eq.Coins',\n    categoryHeaders: false\n  },\n  collectibles: {\n    brand: 'CollectiblesFamous',\n    domain: 'collectiblesfamous.com',\n    accent: '#B8872A',\n    rule: '#B8872A',\n    gtag: 'G-4J2DWC5P8K',\n    categoryFilter: '&category=not.in.(%22N%2FA%22%2C%22Off-topic%22)',\n    categoryHeaders: true,\n    onePerCategory: true,\n    catFeeds: {\n      'Comics': 'https://comicstoresnearme.com/daily-feed',\n      'Coins': 'https://coinsnearme.co/daily-feed',\n      'Sports Cards': 'https://collectiblesfamous.com/sports-cards',\n      'Trading Cards': 'https://collectiblesfamous.com/trading-cards',\n      'Stamps': 'https://collectiblesfamous.com/stamps',\n      'Toys': 'https://collectiblesfamous.com/toys',\n      'Antiques & Art': 'https://collectiblesfamous.com/antiques-art',\n      'Memorabilia': 'https://collectiblesfamous.com/memorabilia',\n      'Vintage': 'https://collectiblesfamous.com/vintage',\n      'Sneakers': 'https://collectiblesfamous.com/sneakers',\n      'Jewelry': 'https://collectiblesfamous.com/jewelry',\n      'Watches': 'https://collectiblesfamous.com/watches'\n    }\n  }\n};\nconst cfg = CONFIG[SITE];\n\nconst SB = 'https://vtlgfwldogsdueiahidp.supabase.co/rest/v1/cf_content_items';\nconst KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bGdmd2xkb2dzZHVlaWFoaWRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjYyOTgsImV4cCI6MjA4ODYwMjI5OH0.L3rNdeNh_282W1BRsYBc64-64_l8bgHG6kMGSU4C048';\n\nlet HOURS = 24;\n\nasync function fetchRows(qs) {\n  const url = SB + qs;\n  const headers = { apikey: KEY, Authorization: 'Bearer ' + KEY };\n  let resp;\n  if (typeof this !== 'undefined' && this && this.helpers && this.helpers.httpRequest) {\n    resp = await this.helpers.httpRequest({ method: 'GET', url: url, headers: headers });\n  } else {\n    const r = await fetch(url, { headers: headers });\n    resp = await r.json();\n  }\n  const out = (typeof resp === 'string') ? JSON.parse(resp) : resp;\n  return Array.isArray(out) ? out : [];\n}\n\nconst sinceIso = new Date(Date.now() - HOURS * 3600000).toISOString();\nconst since48Iso = new Date(Date.now() - 2 * HOURS * 3600000).toISOString();\nconst SELECT = '?select=category,type,title,summary,url,source_name,author,published_at,quality_score';\n\n// Fresh pool: news + blog items from the last 24h.\nconst rows = await fetchRows(\n  SELECT + '&type=in.(news,blog)&status=eq.approved' + cfg.categoryFilter +\n  '&published_at=gte.' + sinceIso +\n  '&order=quality_score.desc.nullslast,published_at.desc&limit=' + (cfg.onePerCategory ? 40 : 7)\n);\n\n// onePerCategory: best story per category, top 6 categories.\nlet items = rows;\nif (cfg.onePerCategory) {\n  const byCat = {};\n  rows.forEach(function (r) { const c = r.category || 'Other'; if (!byCat[c]) byCat[c] = r; });\n  items = Object.keys(byCat).map(function (c) { return byCat[c]; })\n    .sort(function (a, b) {\n      return (Number(b.quality_score) || 0) - (Number(a.quality_score) || 0) ||\n             new Date(b.published_at) - new Date(a.published_at);\n    })\n    .slice(0, 6);\n}\nitems.forEach(function (r) { r.icymi = false; });\nconst freshCount = items.length;\n\n// Thin day on a single-category site? Backfill to 5 from the 24-48h window (\"In case you missed it\").\n// Only when there IS fresh news - never send a teaser made purely of reruns.\nif (!cfg.onePerCategory && freshCount > 0 && freshCount < 5) {\n  const older = await fetchRows(\n    SELECT + '&type=in.(news,blog)&status=eq.approved' + cfg.categoryFilter +\n    '&published_at=gte.' + since48Iso + '&published_at=lt.' + sinceIso +\n    '&order=quality_score.desc.nullslast,published_at.desc&limit=' + (5 - freshCount)\n  );\n  older.forEach(function (r) { r.icymi = true; items.push(r); });\n}\n\n// Up to 2 recent videos (48h window so quiet days still get one).\nconst vids = await fetchRows(\n  SELECT + '&type=eq.video&status=eq.approved' + cfg.categoryFilter +\n  '&published_at=gte.' + since48Iso +\n  '&order=quality_score.desc.nullslast,published_at.desc&limit=2'\n);\n\n// --- date label pinned to US Eastern ---\nlet dateLabel;\ntry {\n  dateLabel = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());\n} catch (e) {\n  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];\n  const MON = ['January','February','March','April','May','June','July','August','September','October','November','December'];\n  const now = new Date();\n  dateLabel = DAYS[now.getDay()] + ', ' + MON[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();\n}\n\nconst decode = (s) => String(s == null ? '' : s)\n  .replace(/&#(\\d+);/g, function (m, n) { return String.fromCharCode(Number(n)); })\n  .replace(/&amp;/g, '&').replace(/&quot;/g, '\"').replace(/&#039;/g, \"'\")\n  .replace(/&apos;/g, \"'\").replace(/&nbsp;/g, ' ');\n\nlet subject = items.length ? decode(items[0].title).trim() : '';\nif (subject.length > 78) subject = subject.slice(0, 75).replace(/\\s+\\S*$/, '') + '...';\nif (!subject) subject = cfg.brand + ' Daily - ' + dateLabel;\n\nreturn [{ json: {\n  skip: freshCount === 0,   // workflow MUST stop on skip:true - never send an empty teaser\n  site: SITE,\n  cfg: cfg,\n  subject: subject,\n  dateLabel: dateLabel,\n  freshCount: freshCount,\n  items: items.map(function (r) { return {\n    category: r.category,\n    title: decode(r.title),\n    summary: decode(r.summary),\n    url: decode(r.url),\n    source_name: r.source_name,\n    icymi: r.icymi === true\n  }; }),\n  videos: vids.map(function (v) { return {\n    category: v.category,\n    title: decode(v.title),\n    url: decode(v.url),\n    channel: v.author || v.source_name\n  }; })\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "d-0002",
+      "name": "Get Daily Items",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Node: \"Build Daily Email\" (n8n Code node) ===\n// Templates items[] from \"Get Daily Items\" into the Axios-style daily teaser email.\n// Pure templating - NO AI call. Output: { skip, subject, emailHtml, site }.\n// Unsubscribe is the %%UNSUBSCRIBE%% placeholder - the GHL send step replaces it.\nconst data = $input.first().json;\nif (data.skip) return [{ json: { skip: true, site: data.site } }];\n\nconst cfg = data.cfg;\nconst A = cfg.accent;\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst trunc = (s, n) => { s = String(s == null ? '' : s).trim(); return s.length > n ? s.slice(0, n).replace(/\\s+\\S*$/, '') + '...' : s; };\n\nconst UTM = '?utm_source=email&utm_medium=daily-teaser';\nconst feedUrl = 'https://' + cfg.domain + '/daily-feed' + UTM;\nconst feedFor = (cat) => (cfg.catFeeds && cat && cfg.catFeeds[cat]) ? cfg.catFeeds[cat] + UTM : feedUrl;\n\nconst eyebrow = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:' + A;\n\nconst items = data.items || [];\nlet itemsHtml = '';\n\nif (cfg.categoryHeaders) {\n  // Multi-category layout: one section per category, header links to that category's feed.\n  items.forEach(function (it, i) {\n    const lead = i === 0;\n    itemsHtml += '<div style=\"' + (i ? 'border-top:1px solid #f1f1f1;margin-top:16px;' : '') + 'padding-top:' + (i ? 14 : 4) + 'px\">' +\n      '<div style=\"margin:0 0 5px\"><a href=\"' + esc(feedFor(it.category)) + '\" style=\"' + eyebrow + ';text-decoration:none\">' + esc(it.category || 'Collectibles') + ' &rarr;</a></div>' +\n      '<div style=\"font-size:' + (lead ? 16 : 14.5) + 'px;font-weight:700;color:#111;line-height:1.35;margin:0 0 6px\">' + esc(it.title) + '</div>' +\n      '<p style=\"font-size:' + (lead ? 14 : 13.5) + 'px;color:#333;line-height:1.65;margin:0 0 6px\">' + esc(trunc(it.summary, lead ? 600 : 400)) + '</p>' +\n      '<p style=\"font-size:12.5px;font-weight:600;margin:0\"><a href=\"' + esc(it.url) + '\" style=\"color:' + A + ';text-decoration:none\">Read at source (' + esc(it.source_name || 'source') + ') &rarr;</a></p></div>';\n  });\n} else {\n  // Single-category layout: lead + \"Catch up fast\" + optional \"In case you missed it\" (24-48h backfill).\n  const fresh = items.filter(function (it) { return !it.icymi; });\n  const icymi = items.filter(function (it) { return it.icymi; });\n  const lead = fresh[0];\n  const row = (it) => '<div style=\"padding:12px 0;border-bottom:1px solid #f1f1f1\">' +\n    '<div style=\"font-size:14px;color:#333;line-height:1.6\"><b>' + esc(it.title) + '.</b> ' + esc(trunc(it.summary, 400)) + '</div>' +\n    '<div style=\"font-size:12.5px;font-weight:600;margin-top:2px\"><a href=\"' + esc(it.url) + '\" style=\"color:' + A + ';text-decoration:none\">Read at source (' + esc(it.source_name || 'source') + ') &rarr;</a></div></div>';\n  const restHtml = fresh.slice(1).map(row).join('');\n  const icymiHtml = icymi.map(row).join('');\n  itemsHtml = '<div style=\"' + eyebrow + ';margin:18px 0 6px\">Top story</div>' +\n    '<div style=\"font-size:16px;font-weight:700;color:#111;line-height:1.35;margin:0 0 7px\">' + esc(lead.title) + '</div>' +\n    '<p style=\"font-size:14px;color:#333;line-height:1.65;margin:0 0 8px\">' + esc(trunc(lead.summary, 600)) + '</p>' +\n    '<p style=\"font-size:13px;font-weight:600;margin:2px 0 0\"><a href=\"' + esc(lead.url) + '\" style=\"color:' + A + ';text-decoration:none\">Read at source (' + esc(lead.source_name || 'source') + ') &rarr;</a></p>' +\n    (restHtml ? '<div style=\"' + eyebrow + ';margin:24px 0 2px\">Catch up fast</div>' + restHtml : '') +\n    (icymiHtml ? '<div style=\"' + eyebrow + ';margin:24px 0 2px\">In case you missed it</div>' + icymiHtml : '');\n}\n\n// Up to 2 videos. Backward compatible with the old single `video` field.\nconst vidList = Array.isArray(data.videos) ? data.videos : (data.video ? [data.video] : []);\nlet videoHtml = '';\nif (vidList.length) {\n  videoHtml = '<div style=\"' + eyebrow + ';margin:22px 0 6px\">Watch</div>';\n  vidList.forEach(function (v) {\n    const vidCat = (cfg.categoryHeaders && v.category) ? esc(v.category) + ' &middot; ' : '';\n    videoHtml += '<div style=\"padding:4px 0 8px\"><div style=\"font-size:13.5px;font-weight:600;color:#111\">' + esc(v.title) + '</div>' +\n      '<div style=\"font-size:12px;color:#777;line-height:1.6\">' + vidCat + esc(v.channel || '') + ' &middot; <a href=\"' + esc(v.url) + '\" style=\"color:' + A + ';text-decoration:none\">Watch &rarr;</a></div></div>';\n  });\n}\n\nconst countLabel = items.length + (items.length === 1 ? ' story' : ' stories') + ' worth your time';\n\nconst emailHtml = '<div style=\"max-width:640px;margin:0 auto;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1a1a;background:#fafaf7;padding:14px\">' +\n  '<div style=\"text-align:center;font-size:11px;color:#888;padding:0 0 8px\"><a href=\"' + feedUrl + '\" style=\"color:' + A + '\">View today\\'s full feed &rarr;</a></div>' +\n  '<div style=\"background:#fff;border-radius:8px;overflow:hidden;border:1px solid #eee\">' +\n  '<div style=\"border-bottom:3px solid ' + cfg.rule + ';padding:18px 26px 14px\">' +\n  '<div style=\"font-family:Georgia,serif;font-size:21px;color:#111\">' + cfg.brand + ' Daily</div>' +\n  '<div style=\"font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-top:3px\">' + countLabel + ' &middot; ' + esc(data.dateLabel) + '</div></div>' +\n  '<div style=\"padding:12px 26px 24px\">' +\n  itemsHtml +\n  videoHtml +\n  '<div style=\"text-align:center;padding:22px 0 4px\"><a href=\"' + feedUrl + '\" style=\"display:inline-block;background:' + A + ';color:#fff;text-decoration:none;font-weight:600;font-size:13px;padding:11px 22px;border-radius:6px\">See everything on the Daily Feed</a></div>' +\n  '</div></div>' +\n  '<div style=\"text-align:center;font-size:11px;color:#999;line-height:1.7;padding:18px 16px 4px\">You subscribed at ' + cfg.domain + ' &middot; %%UNSUBSCRIBE%%</div></div>';\n\nreturn [{ json: { skip: false, subject: data.subject, emailHtml: emailHtml, site: data.site } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "d-0003",
+      "name": "Build Daily Email"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Node: \"Fetch Audience\" (n8n Code node) ===\n// Pulls this site's DAILY audience from the source of truth (cf_newsletter_subscribers):\n// digest_frequency='daily' AND status='active' AND confirmed=true AND source_site=<site>.\n// Reads email + unsub_token so every send carries a REAL per-recipient unsubscribe link\n// (https://<domain>/manage-subscriptions.html?token=<unsub_token>).\n// NOTE: the table's RLS only lets anon INSERT, so this read needs the service key.\n//\n// TEST MODE: while TEST_EMAIL is set, the send goes ONLY to that address. Set it to '' to go live.\nconst SB_SERVICE_KEY = 'PASTE_SUPABASE_SERVICE_KEY';\nconst SOURCE_SITE = 'comicstoresnearme';             // per-site: comicstoresnearme | coinsnearme | collectiblesfamous\nconst TEST_EMAIL = 'jhgreve@gmail.com';              // <-- TEST MODE. Set to '' to send to the real audience.\n\nconst data = $input.first().json;\nif (data.skip) return [{ json: { skip: true, site: data.site, reason: 'no items in the last 24h' } }];\n\nif (SB_SERVICE_KEY.indexOf('PASTE_') === 0) throw new Error('Paste the Supabase service_role key into the Fetch Audience node first.');\n\nconst SB = 'https://vtlgfwldogsdueiahidp.supabase.co/rest/v1/cf_newsletter_subscribers';\nconst qs = '?select=email,unsub_token&source_site=eq.' + SOURCE_SITE +\n  '&digest_frequency=eq.daily&status=eq.active&confirmed=eq.true&limit=1000';\nlet resp = await this.helpers.httpRequest({\n  method: 'GET', url: SB + qs,\n  headers: { apikey: SB_SERVICE_KEY, Authorization: 'Bearer ' + SB_SERVICE_KEY }\n});\nconst rows = Array.isArray(resp) ? resp : JSON.parse(resp || '[]');\n\nconst realCount = rows.length;\nlet audience = rows.map(function (r) { return { email: String(r.email || '').trim().toLowerCase(), unsub_token: r.unsub_token || '' }; })\n  .filter(function (r) { return r.email; });\n\nconst testMode = !!(TEST_EMAIL && TEST_EMAIL.trim());\nif (testMode) {\n  const t = TEST_EMAIL.trim().toLowerCase();\n  const match = audience.find(function (r) { return r.email === t; });\n  audience = [match || { email: t, unsub_token: 'TEST' }];\n}\n\nreturn [{ json: { skip: false, site: data.site, testMode: testMode, realCount: realCount, audience: audience } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "d-0004",
+      "name": "Fetch Audience"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Node: \"Send via GHL\" (n8n Code node) ===\n// For each audience member: find (or upsert) the GHL contact by email, skip DND,\n// swap %%UNSUBSCRIBE%% for their personal manage-subscriptions link, then send the\n// email through GHL conversations. Throttled. Never set executeOnce on this node.\nconst GHL = 'PASTE_NEWSLETTER_CONTACTS_TOKEN';\nconst SITE_DOMAIN = 'comicstoresnearme.com';   // per-site: comicstoresnearme.com | coinsnearme.co | collectiblesfamous.com\nconst LOC = 'MHmcNUWmcWAPevl1QVXm';\nconst B = 'https://services.leadconnectorhq.com';\nconst H = { Authorization: 'Bearer ' + GHL, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' };\n\n// Same tags the live subscriber-sync workflow writes - used only when upserting a missing contact.\nconst SITE_TAG = { 'comicstoresnearme.com': 'comics-digest', 'coinsnearme.co': 'coins-digest', 'collectiblesfamous.com': 'collectibles-digest' }[SITE_DOMAIN];\n\nconst a = $input.first().json;\nconst label = 'Daily Teaser (' + SITE_DOMAIN + ')';\nif (a.skip) return [{ json: { skip: true, sent: 0, reportSubject: label + ': skipped - ' + (a.reason || 'no items'), reportHtml: '<p>No approved items in the last 24 hours, so no email was sent. This is normal on quiet days.</p>' } }];\n\nif (GHL.indexOf('PASTE_') === 0) throw new Error('Paste the Newsletter & Contacts GHL token into the Send via GHL node first.');\n\nconst built = $('Build Daily Email').first().json;\n\nconst self = this;\nasync function http(method, url, body) {\n  return await self.helpers.httpRequest({ method: method, url: url, headers: H, body: body || undefined, json: true });\n}\nconst sleep = (ms) => new Promise(function (res) { setTimeout(res, ms); });\n\nlet sent = 0, dndSkipped = 0, upserted = 0; const failures = [];\nfor (const sub of (a.audience || [])) {\n  try {\n    let contact = null;\n    try {\n      const s = await http('GET', B + '/contacts/?locationId=' + LOC + '&query=' + encodeURIComponent(sub.email));\n      contact = ((s && s.contacts) || []).find(function (c) { return String(c.email || '').toLowerCase() === sub.email; }) || null;\n    } catch (e) {}\n    if (!contact) {\n      const up = await http('POST', B + '/contacts/upsert', { locationId: LOC, email: sub.email, tags: [SITE_TAG, 'digest-daily', 'newsletter'] });\n      contact = (up && up.contact) || null;\n      upserted++;\n    }\n    if (!contact || !contact.id) { failures.push(sub.email + ': no GHL contact'); continue; }\n    if (contact.dnd === true) { dndSkipped++; continue; }\n\n    const unsub = '<a href=\"https://' + SITE_DOMAIN + '/manage-subscriptions.html?token=' + encodeURIComponent(sub.unsub_token || '') + '\" style=\"color:#999\">Unsubscribe</a>';\n    const html = String(built.emailHtml).split('%%UNSUBSCRIBE%%').join(unsub);\n\n    await http('POST', B + '/conversations/messages', { type: 'Email', contactId: contact.id, subject: built.subject, html: html });\n    sent++;\n  } catch (e) {\n    failures.push(sub.email + ': ' + (e && e.message ? e.message.slice(0, 200) : 'error'));\n  }\n  await sleep(500); // throttle\n}\n\nconst mode = a.testMode ? ' [TEST MODE - only ' + (a.audience[0] && a.audience[0].email) + ']' : '';\nconst reportSubject = label + ': ' + sent + ' sent' + mode + ' - ' + built.subject;\nconst reportHtml = '<p><b>' + label + '</b>' + mode + '</p>' +\n  '<p>Sent: ' + sent + ' &middot; DND skipped: ' + dndSkipped + ' &middot; upserted into GHL: ' + upserted +\n  ' &middot; real daily audience: ' + a.realCount + (failures.length ? ' &middot; <b style=\"color:#b00\">failures: ' + failures.length + '</b>' : '') + '</p>' +\n  (failures.length ? '<p style=\"color:#b00;font-size:12px\">' + failures.join('<br>') + '</p>' : '') +\n  '<hr><p><b>What subscribers got:</b> (subject: ' + built.subject + ')</p>' + built.emailHtml;\n\nreturn [{ json: { skip: false, sent: sent, dndSkipped: dndSkipped, upserted: upserted, failures: failures, testMode: a.testMode, reportSubject: reportSubject, reportHtml: reportHtml } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "d-0005",
+      "name": "Send via GHL"
+    },
+    {
+      "parameters": {
+        "toRecipients": "marketing@coastaldirectoryllc.com",
+        "subject": "={{ $json.reportSubject }}",
+        "bodyContent": "={{ $json.reportHtml }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "d-0006",
+      "name": "Report to Joe",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "MqBquxCW68R9CtOR",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 7 AM": {
+      "main": [
+        [
+          {
+            "node": "Get Daily Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Daily Items": {
+      "main": [
+        [
+          {
+            "node": "Build Daily Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Daily Email": {
+      "main": [
+        [
+          {
+            "node": "Fetch Audience",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Audience": {
+      "main": [
+        [
+          {
+            "node": "Send via GHL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via GHL": {
+      "main": [
+        [
+          {
+            "node": "Report to Joe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York"
+  }
+}
