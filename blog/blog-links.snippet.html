@@ -1,0 +1,17 @@
+<!-- Daily-feed blog-lane link cards.
+     Insert between the lane-filter nav (#df-lanes) and the feed (#df-feed).
+     Shown only when the Blog lane is active - see blog-links.snippet.js.
+     Replace ACCENT with the site accent color (CNM #1a3a5c, CSNM #c03030)
+     and adapt the two card texts to the vertical.
+
+     CSS (add near the .df-pill rules):
+     .df-blog-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 0 0 24px; }
+     .df-blog-links a { display: block; background: #fff; border: 1px solid #ebebeb; border-radius: 12px; padding: 16px 18px; text-decoration: none; transition: all .15s; }
+     .df-blog-links a:hover { border-color: ACCENT; transform: translateY(-2px); }
+     .df-blog-links strong { display: block; font-size: 15px; color: #111; font-weight: 600; margin-bottom: 3px; }
+     .df-blog-links span { font-size: 13px; color: #666; line-height: 1.5; }
+-->
+<div class="df-blog-links" id="df-blog-links" style="display:none">
+  <a href="/blog"><strong>City [vertical] shop guides</strong><span>The best-rated shops in [N] cities &mdash; picks, services, and how to choose.</span></a>
+  <a href="/blog/news/"><strong>Weekly [vertical] news roundups</strong><span>The week's biggest stories &mdash; every Sunday.</span></a>
+</div>
