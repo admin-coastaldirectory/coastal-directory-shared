@@ -114,15 +114,18 @@
     },
     {
       "parameters": {
-        "toRecipients": "marketing@coastaldirectoryllc.com",
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "marketing@coastaldirectoryllc.com",
         "subject": "=Weekly digest published: {{ $json.subject }}",
-        "bodyContent": "=<p>Published: <a href=\"{{ $json.postUrl }}\">{{ $json.postUrl }}</a> (index: {{ $json.index }}, post: {{ $json.post }})</p><p><b>X post to paste:</b><br>{{ $json.social_x }}</p><hr><p><b>Newsletter preview (this is what subscribers will get once GHL sync is live):</b></p>{{ $json.emailHtml }}",
-        "additionalFields": {
-          "bodyContentType": "html"
+        "emailType": "html",
+        "message": "=<p>Published: <a href=\"{{ $json.postUrl }}\">{{ $json.postUrl }}</a> (index: {{ $json.index }}, post: {{ $json.post }})</p><p><b>X post to paste:</b><br>{{ $json.social_x }}</p><hr><p><b>Newsletter preview (this is what subscribers will get once GHL sync is live):</b></p>{{ $json.emailHtml }}",
+        "options": {
+          "appendAttribution": false
         }
       },
-      "type": "n8n-nodes-base.microsoftOutlook",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
       "position": [
         1100,
         120
@@ -130,9 +133,9 @@
       "id": "w-0007",
       "name": "Email me the digest",
       "credentials": {
-        "microsoftOutlookOAuth2Api": {
-          "id": "MqBquxCW68R9CtOR",
-          "name": "Microsoft Outlook account"
+        "gmailOAuth2": {
+          "id": "Ojj89vg1yw4q6fdk",
+          "name": "Gmail – claude@"
         }
       }
     }

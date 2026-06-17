@@ -21,12 +21,14 @@ const nodes = [
     { jsCode: read('node-fetch-audience.js') }),
   node('d-0005', 'Send via GHL', 'n8n-nodes-base.code', 2, [880, 0],
     { jsCode: read('node-send-ghl.js') }),
-  node('d-0006', 'Report to Joe', 'n8n-nodes-base.microsoftOutlook', 2, [1100, 0],
-    { toRecipients: 'marketing@coastaldirectoryllc.com',
+  node('d-0006', 'Report to Joe', 'n8n-nodes-base.gmail', 2.2, [1100, 0],
+    { resource: 'message', operation: 'send',
+      sendTo: 'marketing@coastaldirectoryllc.com',
       subject: '={{ $json.reportSubject }}',
-      bodyContent: '={{ $json.reportHtml }}',
-      additionalFields: { bodyContentType: 'html' } },
-    { credentials: { microsoftOutlookOAuth2Api: { id: 'MqBquxCW68R9CtOR', name: 'Microsoft Outlook account' } } })
+      emailType: 'html',
+      message: '={{ $json.reportHtml }}',
+      options: { appendAttribution: false } },
+    { credentials: { gmailOAuth2: { id: 'Ojj89vg1yw4q6fdk', name: 'Gmail – claude@' } } })
 ];
 
 const connections = {

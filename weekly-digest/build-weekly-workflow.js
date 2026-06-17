@@ -45,12 +45,14 @@ const nodes = [
     { jsCode: publishCode }),
   node('w-0006','Post to Facebook','n8n-nodes-base.code',2,[1100,-120],
     { jsCode: fbCode }),
-  node('w-0007','Email me the digest','n8n-nodes-base.microsoftOutlook',2,[1100,120],
-    { toRecipients:'marketing@coastaldirectoryllc.com',
+  node('w-0007','Email me the digest','n8n-nodes-base.gmail',2.2,[1100,120],
+    { resource:'message', operation:'send',
+      sendTo:'marketing@coastaldirectoryllc.com',
       subject:'=Weekly digest published: {{ $json.subject }}',
-      bodyContent:'=<p>Published: <a href="{{ $json.postUrl }}">{{ $json.postUrl }}</a> (index: {{ $json.index }}, post: {{ $json.post }})</p><p><b>X post to paste:</b><br>{{ $json.social_x }}</p><hr><p><b>Newsletter preview (this is what subscribers will get once GHL sync is live):</b></p>{{ $json.emailHtml }}',
-      additionalFields:{ bodyContentType:'html' } },
-    { credentials:{ microsoftOutlookOAuth2Api:{ id:'MqBquxCW68R9CtOR', name:'Microsoft Outlook account' } } })
+      emailType:'html',
+      message:'=<p>Published: <a href="{{ $json.postUrl }}">{{ $json.postUrl }}</a> (index: {{ $json.index }}, post: {{ $json.post }})</p><p><b>X post to paste:</b><br>{{ $json.social_x }}</p><hr><p><b>Newsletter preview (this is what subscribers will get once GHL sync is live):</b></p>{{ $json.emailHtml }}',
+      options:{ appendAttribution:false } },
+    { credentials:{ gmailOAuth2:{ id:'Ojj89vg1yw4q6fdk', name:'Gmail – claude@' } } })
 ];
 
 const connections = {
