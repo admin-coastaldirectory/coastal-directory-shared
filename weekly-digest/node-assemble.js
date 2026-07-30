@@ -31,7 +31,8 @@ const FOOTER = '<section class="subband"><h2>Get the weekly roundup free</h2><p>
 
 // ---- schema ----
 const faqLd = { '@context':'https://schema.org','@type':'FAQPage','mainEntity': faq.map(f => ({ '@type':'Question','name':f.q,'acceptedAnswer':{'@type':'Answer','text':f.a} })) };
-const artLd = { '@context':'https://schema.org','@type':'BlogPosting','headline': D.title,'description': D.meta_description,'datePublished': new Date().toISOString().slice(0,10),'author':{'@type':'Organization','name':'ComicStoresNearMe'},'mainEntityOfPage': postUrl };
+const pubDate = new Date().toISOString().slice(0,10);
+const artLd = { '@context':'https://schema.org','@type':'BlogPosting','headline': D.title,'description': D.meta_description,'image':'https://comicstoresnearme.com/og-default.png','datePublished': pubDate,'dateModified': pubDate,'author':{'@type':'Person','name':'ComicStoresNearMe Editorial Team','url':'https://comicstoresnearme.com/about'},'publisher':{'@type':'Organization','name':'ComicStoresNearMe','logo':{'@type':'ImageObject','url':'https://comicstoresnearme.com/og-default.png'}},'mainEntityOfPage': postUrl };
 
 // ---- body ----
 let body = '<p>The stories collectors need to know from this week, each with a quick read and a link to the source, plus the videos worth your time. Want the live version? Our <a href="/daily-feed">Daily Feed</a> updates all week.</p>';
@@ -67,6 +68,8 @@ const postHtml = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
   '<link rel="canonical" href="' + postUrl + '"><meta name="robots" content="index, follow">' +
   '<meta property="og:title" content="' + esc(D.title) + '"><meta property="og:description" content="' + esc(D.meta_description) + '">' +
   '<meta property="og:type" content="article"><meta property="og:url" content="' + postUrl + '">' +
+  '<meta property="og:image" content="https://comicstoresnearme.com/og-default.png"><meta property="og:site_name" content="ComicStoresNearMe">' +
+  '<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="' + esc(D.title) + '"><meta name="twitter:description" content="' + esc(D.meta_description) + '"><meta name="twitter:image" content="https://comicstoresnearme.com/og-default.png">' +
   '<script type="application/ld+json">' + JSON.stringify(artLd) + '</script>' +
   '<script type="application/ld+json">' + JSON.stringify(faqLd) + '</script>' +
   '<style>' + CSS + '</style></head><body>' + HEADER +
