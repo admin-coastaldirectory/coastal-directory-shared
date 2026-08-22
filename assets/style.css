@@ -319,6 +319,36 @@ main.content li { margin-bottom: 6px; }
 }
 .tag.cgc { color: #8a5a00; background: #fff4d6; }
 .tag.feat { color: var(--accent); background: rgba(192,48,48,0.1); }
+
+/* Marketplace chips / links — featured shops only.
+   Gated in JS by util.marketplaceLinks(); see templates/shell.js and
+   templates/shop-page.js. Kept in sync with the inline stylesheet in shell.js. */
+.shop-online {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+.chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.4;
+}
+.chip.ebay { color: #00478f; background: #e8f1fd; }
+.chip.whatnot { color: #6a1fb0; background: #f3e8fd; }
+.shop-online-links { margin: 24px 0 0; }
+.shop-online-links h2 { margin-bottom: 6px; }
+.shop-online-links .links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
 .star { font-size: 11px; line-height: 1; }
 
 .event-card {

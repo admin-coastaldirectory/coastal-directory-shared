@@ -7,6 +7,7 @@
 //   1) forceOrigin() canonical/og:url guard (lib/templates/shell.js)
 //   2) article() schema (lib/schemas/index.js)
 //   3) homeFAQ() generator (lib/descriptions/index.js)
+//   4) marketplaceLinks() featured-only gate (lib/util.js)
 //
 // Plain assert-based checks, no test framework dependency — prints
 // PASS/FAIL per check and exits 1 if anything fails, so it's safe to
@@ -18,6 +19,8 @@ const path = require('path');
 const { pageShell, forceOrigin } = require(path.join(__dirname, '..', 'lib', 'templates', 'shell'));
 const schemas = require(path.join(__dirname, '..', 'lib', 'schemas'));
 const descriptions = require(path.join(__dirname, '..', 'lib', 'descriptions'));
+const { marketplaceUrl, marketplaceLinks } = require(path.join(__dirname, '..', 'lib', 'util'));
+const { shopCard } = require(path.join(__dirname, '..', 'lib', 'templates', 'shell'));
 
 let pass = 0;
 let fail = 0;
@@ -157,6 +160,56 @@ check('faqPage(homeFAQ(...)) produces a valid FAQPage schema', () => {
     assert.strictEqual(q['@type'], 'Question');
     assert.strictEqual(q.acceptedAnswer['@type'], 'Answer');
   });
+});
+
+console.log('\n=== marketplaceLinks() — featured-only eBay/Whatnot gate ===\n');
+
+const mpShop = {
+  name: 'Golden Eagle Coins', city: 'Laurel', state: 'MD',
+  ebay_url: 'https://www.ebay.com/str/goldeneagle',
+  whatnot_url: 'https://whatnot.com/user/goldeneagle',
+};
+
+check('marketplaceUrl accepts an https eBay storefront', () => {
+  assert.strictEqual(marketplaceUrl('https://www.ebay.com/str/x', 'ebay'), 'https://www.ebay.com/str/x');
+});
+check('marketplaceUrl accepts eBay regional domains and subdomains', () => {
+  assert.ok(marketplaceUrl('https://stores.ebay.co.uk/thing', 'ebay'));
+  assert.ok(marketplaceUrl('https://www.ebay.com.au/str/x', 'ebay'));
+});
+check('marketplaceUrl rejects http:// (must be https)', () => {
+  assert.strictEqual(marketplaceUrl('http://www.ebay.com/str/x', 'ebay'), null);
+});
+check('marketplaceUrl rejects lookalike hosts', () => {
+  assert.strictEqual(marketplaceUrl('https://notebay.com/x', 'ebay'), null);
+  assert.strictEqual(marketplaceUrl('https://evil.example/ebay.com', 'ebay'), null);
+  assert.strictEqual(marketplaceUrl('https://whatnot.com.evil.example/x', 'whatnot'), null);
+});
+check('marketplaceUrl rejects non-http schemes', () => {
+  assert.strictEqual(marketplaceUrl('javascript:alert(1)', 'ebay'), null);
+});
+check('marketplaceLinks returns nothing for a NON-featured shop with links stored', () => {
+  assert.strictEqual(marketplaceLinks(Object.assign({}, mpShop, { featured: false })), null);
+  assert.strictEqual(marketplaceLinks(Object.assign({}, mpShop)), null);
+});
+check('marketplaceLinks returns both links for a featured shop', () => {
+  const out = marketplaceLinks(Object.assign({}, mpShop, { featured: true }));
+  assert.ok(out && out.ebay && out.whatnot);
+});
+check('marketplaceLinks drops only the invalid half', () => {
+  const out = marketplaceLinks({ featured: true, ebay_url: 'https://www.ebay.com/str/x', whatnot_url: 'nope' });
+  assert.ok(out.ebay);
+  assert.strictEqual(out.whatnot, null);
+});
+check('shopCard shows chips for a featured shop and stays a single anchor', () => {
+  const card = shopCard(Object.assign({}, mpShop, { featured: true }), sampleConfig, 'maryland');
+  assert.ok(card.includes('class="chip ebay"'), 'eBay chip missing');
+  assert.ok(card.includes('class="chip whatnot"'), 'Whatnot chip missing');
+  assert.strictEqual((card.match(/<a /g) || []).length, 1, 'card must not contain a nested anchor');
+});
+check('shopCard shows no chips for a non-featured shop with links stored', () => {
+  const card = shopCard(Object.assign({}, mpShop, { featured: false }), sampleConfig, 'maryland');
+  assert.ok(!card.includes('shop-online'), 'chips leaked onto a non-featured card');
 });
 
 console.log(`\n=== ${pass}/${pass + fail} checks passed ===\n`);
